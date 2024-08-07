@@ -162,7 +162,7 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 	}()
 }
 
-// Función para leer la configuración
+
 func readConfig() config {
 	c := config{}
 	if _, err := os.Stat("config.toml"); os.IsNotExist(err) {

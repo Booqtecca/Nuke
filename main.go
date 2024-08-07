@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +28,6 @@ func main() {
 	config := readConfig()
 	src := tokenSource()
 
-	
 	p, err := minecraft.NewForeignStatusProvider(config.Connection.RemoteAddress)
 	if err != nil {
 		panic(err)
@@ -52,15 +52,17 @@ func main() {
 }
 
 func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config config, src oauth2.TokenSource) {
-	
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	serverConn, err := minecraft.Dialer{
 		TokenSource: src,
 		ClientData:  conn.ClientData(),
-		DialTimeout: 10 * time.Second, 
-	}.Dial("raknet", addr)
+	}.DialContext(ctx, "raknet", addr)
 	if err != nil {
 		panic(err)
 	}
+
 	var g sync.WaitGroup
 	g.Add(2)
 	go func() {
@@ -162,6 +164,12 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 	}()
 }
 
+type config struct {
+	Connection struct {
+		LocalAddress  string
+		RemoteAddress string
+	}
+}
 
 func readConfig() config {
 	c := config{}
@@ -221,11 +229,4 @@ func tokenSource() oauth2.TokenSource {
 	b, _ := json.Marshal(tok)
 	_ = ioutil.WriteFile("token.tok", b, 0644)
 	return src
-}
-
-type config struct {
-	Connection struct {
-		LocalAddress  string
-		RemoteAddress string
-	}
 }

@@ -30,7 +30,7 @@ func main() {
     src := tokenSource()
 
     // Crea un StatusProvider que anuncie el servidor proxy
-    statusProvider := &minecraft.StatusProvider{
+    statusProvider := minecraft.NewSimpleStatusProvider(
         Name:        "Proxy Server",
         Address:     fmt.Sprintf("%s:%d", config.Connection.LocalAddress, 19132), // Reemplaza con la dirección y puerto correctos
         Description: "Proxy description",

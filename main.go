@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
-	"errors" 
 
 	"github.com/pelletier/go-toml"
 	"github.com/sandertv/gophertunnel/minecraft"
@@ -33,26 +34,59 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	lc := net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			return c.Control(func(fd uintptr) {
+				syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+				syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
+			})
+		},
+	}
+
+	conn, err := lc.ListenPacket(context.Background(), "udp", config.Connection.LocalAddress)
+	if err != nil {
+		panic(err)
+	}
+
 	listener, err := minecraft.ListenConfig{
 		StatusProvider: p,
+		PacketConn:     conn,
 	}.Listen("raknet", config.Connection.LocalAddress)
 	if err != nil {
 		panic(err)
 	}
 
+	log.Printf("Proxy iniciado. Conéctate a: %s", config.Connection.LocalAddress)
+	log.Printf("Redirigiendo a: %s", config.Connection.RemoteAddress)
+
 	addr = config.Connection.RemoteAddress
 
-	defer listener.Close()
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		log.Println("Cerrando el proxy...")
+		listener.Close()
+		conn.Close()
+		os.Exit(0)
+	}()
+
 	for {
 		c, err := listener.Accept()
 		if err != nil {
-			panic(err)
+			log.Printf("Error al aceptar conexión: %v", err)
+			continue
 		}
+		log.Printf("Nueva conexión desde: %s", c.RemoteAddr())
 		go handleConn(c.(*minecraft.Conn), listener, config, src)
 	}
 }
 
 func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config config, src oauth2.TokenSource) {
+	log.Printf("Iniciando conexión para: %s", conn.IdentityData().DisplayName)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -61,27 +95,33 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 		ClientData:  conn.ClientData(),
 	}.DialContext(ctx, "raknet", addr)
 	if err != nil {
-		panic(err)
+		log.Printf("Error al conectar al servidor: %v", err)
+		listener.Disconnect(conn, "No se pudo conectar al servidor")
+		return
 	}
 
 	var g sync.WaitGroup
 	g.Add(2)
 	go func() {
 		if err := conn.StartGame(serverConn.GameData()); err != nil {
-			panic(err)
+			log.Printf("Error al iniciar el juego: %v", err)
+			listener.Disconnect(conn, "No se pudo iniciar el juego")
 		}
 		g.Done()
 	}()
 	go func() {
 		if err := serverConn.DoSpawn(); err != nil {
-			panic(err)
+			log.Printf("Error al hacer spawn: %v", err)
+			listener.Disconnect(conn, "No se pudo hacer spawn")
 		}
 		g.Done()
 	}()
 	g.Wait()
 
+	log.Printf("Conexión establecida para: %s", conn.IdentityData().DisplayName)
+
 	go func() {
-		defer listener.Disconnect(conn, "connection lost")
+		defer listener.Disconnect(conn, "Conexión perdida")
 		defer serverConn.Close()
 		for {
 			pk, err := conn.ReadPacket()
@@ -127,23 +167,20 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 								Actions:         actions,
 								TransactionData: &protocol.NormalTransactionData{},
 							})
-							logrus.Infof("Sending %d modified payloads to the server!", COUNT)
+							logrus.Infof("Enviando %d payloads modificados al servidor!", COUNT)
 							time.Sleep(5 * time.Millisecond)
 						}
 					}()
 				}
 			}
 			if err := serverConn.WritePacket(pk); err != nil {
-				if disconnect, ok := errors.Unwrap(err).(minecraft.DisconnectError); ok {
-					_ = listener.Disconnect(conn, disconnect.Error())
-				}
 				return
 			}
 		}
 	}()
 	go func() {
 		defer serverConn.Close()
-		defer listener.Disconnect(conn, "connection lost")
+		defer listener.Disconnect(conn, "Conexión perdida")
 		for {
 			pk, err := serverConn.ReadPacket()
 			if pk, ok := pk.(*packet.Transfer); ok {
@@ -153,9 +190,6 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 				pk.Port = 19132
 			}
 			if err != nil {
-				if disconnect, ok := errors.Unwrap(err).(minecraft.DisconnectError); ok {
-					_ = listener.Disconnect(conn, disconnect.Error())
-				}
 				return
 			}
 			if err := conn.WritePacket(pk); err != nil {
@@ -177,30 +211,30 @@ func readConfig() config {
 	if _, err := os.Stat("config.toml"); os.IsNotExist(err) {
 		f, err := os.Create("config.toml")
 		if err != nil {
-			log.Fatalf("error creating config: %v", err)
+			log.Fatalf("Error al crear config: %v", err)
 		}
 		data, err := toml.Marshal(c)
 		if err != nil {
-			log.Fatalf("error encoding default config: %v", err)
+			log.Fatalf("Error al codificar config por defecto: %v", err)
 		}
 		if _, err := f.Write(data); err != nil {
-			log.Fatalf("error writing encoded default config: %v", err)
+			log.Fatalf("Error al escribir config por defecto codificada: %v", err)
 		}
 		_ = f.Close()
 	}
 	data, err := os.ReadFile("config.toml")
 	if err != nil {
-		log.Fatalf("error reading config: %v", err)
+		log.Fatalf("Error al leer config: %v", err)
 	}
 	if err := toml.Unmarshal(data, &c); err != nil {
-		log.Fatalf("error decoding config: %v", err)
+		log.Fatalf("Error al decodificar config: %v", err)
 	}
 	if c.Connection.LocalAddress == "" {
 		c.Connection.LocalAddress = "0.0.0.0:19132"
 	}
 	data, _ = toml.Marshal(c)
 	if err := os.WriteFile("config.toml", data, 0644); err != nil {
-		log.Fatalf("error writing config file: %v", err)
+		log.Fatalf("Error al escribir archivo config: %v", err)
 	}
 	return c
 }

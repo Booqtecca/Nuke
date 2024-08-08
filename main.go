@@ -140,8 +140,7 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 								actions[i] = newAction
 							}
 							serverConn.WritePacket(&packet.InventoryTransaction{
-								TransactionType: protocol.TransactionTypeNormal,
-								Actions:         actions,
+								Actions: actions,
 							})
 							logrus.Infof("Enviando %d payloads modificados al servidor!", COUNT)
 							time.Sleep(5 * time.Millisecond)

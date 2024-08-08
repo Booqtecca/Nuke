@@ -144,12 +144,7 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 	defer serverConn.Close()
 	defer listener.Disconnect(conn, "connection lost")
 	for {
-		// Lee el siguiente paquete del servidor
 		pk, err := serverConn.ReadPacket()
-		if err != nil {
-			listener.Disconnect(conn, fmt.Sprintf("error: %v", err))
-			return
-		}
 
 		// Verifica si el paquete es un paquete de transferencia
 		if pk, ok := pk.(*packet.Transfer); ok {
@@ -160,9 +155,18 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 			pk.Port = 19132
 		}
 
+		// Maneja el error y verifica si es un error de desconexión
+		if err != nil {
+			if disconnect, ok := errors.Unwrap(err).(minecraft.DisconnectError); ok {
+				_ = listener.Disconnect(conn, disconnect.Error())
+			} else {
+				listener.Disconnect(conn, fmt.Sprintf("error: %v", err))
+			}
+			return
+		}
+
 		// Escribe el paquete al cliente
 		if err := conn.WritePacket(pk); err != nil {
-			listener.Disconnect(conn, fmt.Sprintf("error: %v", err))
 			return
 		}
 	}

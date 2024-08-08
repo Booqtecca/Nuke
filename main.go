@@ -9,7 +9,6 @@ import (
     "os"
     "sync"
     "time"
-    "errors" // Importar el paquete "errors"
 
     "github.com/pelletier/go-toml"
     "github.com/sandertv/gophertunnel/minecraft"
@@ -143,7 +142,7 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
                 }
             }
             if err := serverConn.WritePacket(pk); err != nil {
-                if disconnect, ok := errors.Unwrap(err).(minecraft.DisconnectError); ok {
+                if disconnect, ok := fmt.Errorf("error: %v", err).(minecraft.DisconnectError); ok {
                     _ = listener.Disconnect(conn, disconnect.Error())
                 }
                 return
@@ -162,7 +161,7 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
                 pk.Port = 19132
             }
             if err != nil {
-                if disconnect, ok := errors.Unwrap(err).(minecraft.DisconnectError); ok {
+                if disconnect, ok := fmt.Errorf("error: %v", err).(minecraft.DisconnectError); ok {
                     _ = listener.Disconnect(conn, disconnect.Error())
                 }
                 return

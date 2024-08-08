@@ -29,18 +29,7 @@ func main() {
 	config := readConfig()
 	src := tokenSource()
 
-	// Crea un StatusProvider que anuncie el servidor proxy
-	statusProvider := minecraft.NewStatusProvider(
-		"Proxy Server",
-		fmt.Sprintf("%s:%d", config.Connection.LocalAddress, 19132), // Reemplaza con la dirección y puerto correctos
-		"Proxy description",
-		0, // Número de jugadores conectados
-		0, // Número máximo de jugadores
-	)
-
-	listener, err := minecraft.ListenConfig{
-		StatusProvider: statusProvider,
-	}.Listen("raknet", config.Connection.LocalAddress)
+	listener, err := minecraft.ListenConfig{}.Listen("raknet", config.Connection.LocalAddress)
 	if err != nil {
 		panic(err)
 	}
@@ -151,9 +140,8 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 								actions[i] = newAction
 							}
 							serverConn.WritePacket(&packet.InventoryTransaction{
-								TransactionData: &protocol.NormalTransactionData{
-									Actions: actions,
-								},
+								TransactionType: protocol.TransactionTypeNormal,
+								Actions:         actions,
 							})
 							logrus.Infof("Enviando %d payloads modificados al servidor!", COUNT)
 							time.Sleep(5 * time.Millisecond)

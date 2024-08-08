@@ -12,6 +12,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"errors" 
 
 	"github.com/pelletier/go-toml"
 	"github.com/sandertv/gophertunnel/minecraft"

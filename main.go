@@ -141,26 +141,33 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 	}()
 
 	go func() {
-		defer serverConn.Close()
-		defer listener.Disconnect(conn, "connection lost")
-		for {
-			pk, err := serverConn.ReadPacket()
-			if pk, ok := pk.(*packet.Transfer); ok {
-				addr = fmt.Sprintf("%s:%d", pk.Address, pk.Port)
-
-				pk.Address = "127.0.0.1"
-				pk.Port = 19132
-			}
-			if err != nil {
-				listener.Disconnect(conn, fmt.Sprintf("error: %v", err))
-				return
-			}
-			if err := conn.WritePacket(pk); err != nil {
-				return
-			}
+	defer serverConn.Close()
+	defer listener.Disconnect(conn, "connection lost")
+	for {
+		// Lee el siguiente paquete del servidor
+		pk, err := serverConn.ReadPacket()
+		if err != nil {
+			listener.Disconnect(conn, fmt.Sprintf("error: %v", err))
+			return
 		}
-	}()
-}
+
+		// Verifica si el paquete es un paquete de transferencia
+		if pk, ok := pk.(*packet.Transfer); ok {
+			addr = fmt.Sprintf("%s:%d", pk.Address, pk.Port)
+
+			// Modifica la dirección y el puerto según sea necesario
+			pk.Address = "127.0.0.1"
+			pk.Port = 19132
+		}
+
+		// Escribe el paquete al cliente
+		if err := conn.WritePacket(pk); err != nil {
+			listener.Disconnect(conn, fmt.Sprintf("error: %v", err))
+			return
+		}
+	}
+}()
+
 
 type config struct {
 	Connection struct {

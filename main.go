@@ -35,18 +35,8 @@ func main() {
 		panic(err)
 	}
 
-	lc := net.ListenConfig{
-		Control: func(network, address string, c syscall.RawConn) error {
-			return c.Control(func(fd uintptr) {
-				syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-				syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
-			})
-		},
-	}
-
 	listener, err := minecraft.ListenConfig{
 		StatusProvider: p,
-		PacketConn:     nil, // Use the default packet connection
 	}.Listen("raknet", config.Connection.LocalAddress)
 	if err != nil {
 		panic(err)

@@ -31,12 +31,12 @@ func main() {
 
     // Crea un StatusProvider que anuncie el servidor proxy
     statusProvider := minecraft.NewSimpleStatusProvider(
-        Name:        "Proxy Server",
-        Address:     fmt.Sprintf("%s:%d", config.Connection.LocalAddress, 19132), // Reemplaza con la dirección y puerto correctos
-        Description: "Proxy description",
-        NumPlayers:  0, // Número de jugadores conectados
-        MaxPlayers:  0, // Número máximo de jugadores
-    }
+        "Proxy Server",
+        fmt.Sprintf("%s:%d", config.Connection.LocalAddress, 19132), // Reemplaza con la dirección y puerto correctos
+        "Proxy description",
+        0, // Número de jugadores conectados
+        0, // Número máximo de jugadores
+    )
 
     listener, err := minecraft.ListenConfig{
         StatusProvider: statusProvider,

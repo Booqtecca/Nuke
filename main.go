@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"os"
 	"os/signal"
 	"sync"
@@ -30,13 +29,17 @@ func main() {
 	config := readConfig()
 	src := tokenSource()
 
-	p, err := minecraft.NewForeignStatusProvider(config.Connection.RemoteAddress)
-	if err != nil {
-		panic(err)
-	}
+	// Crea un StatusProvider que anuncie el servidor proxy
+	statusProvider := minecraft.NewSimpleStatusProvider(
+		"Proxy Server",
+		fmt.Sprintf("%s:%d", config.Connection.LocalAddress, 19132), // Reemplaza con la dirección y puerto correctos
+		"Proxy description",
+		0, // Número de jugadores conectados
+		0, // Número máximo de jugadores
+	)
 
 	listener, err := minecraft.ListenConfig{
-		StatusProvider: p,
+		StatusProvider: statusProvider,
 	}.Listen("raknet", config.Connection.LocalAddress)
 	if err != nil {
 		panic(err)

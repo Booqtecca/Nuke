@@ -1,14 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"sync"
 	"time"
-	"errors" 
 
 	"github.com/pelletier/go-toml"
 	"github.com/sandertv/gophertunnel/minecraft"
@@ -26,13 +27,6 @@ var addr string
 func main() {
 	config := readConfig()
 	src := tokenSource()
-
-	fmt.Println("IP del servidor al que te vas a conectar:")
-	fmt.Scanln(&config.Connection.RemoteAddress)
-	fmt.Println("Puerto del servidor:")
-	fmt.Scanln(&config.Connection.LocalAddress)
-
-	saveConfig(config)
 
 	p, err := minecraft.NewForeignStatusProvider(config.Connection.RemoteAddress)
 	if err != nil {
@@ -58,13 +52,17 @@ func main() {
 }
 
 func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config config, src oauth2.TokenSource) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	serverConn, err := minecraft.Dialer{
 		TokenSource: src,
 		ClientData:  conn.ClientData(),
-	}.Dial("raknet", addr)
+	}.DialContext(ctx, "raknet", addr)
 	if err != nil {
 		panic(err)
 	}
+
 	var g sync.WaitGroup
 	g.Add(2)
 	go func() {
@@ -135,44 +133,36 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 				}
 			}
 			if err := serverConn.WritePacket(pk); err != nil {
-				listener.Disconnect(conn, fmt.Sprintf("error: %v", err))
+				if disconnect, ok := errors.Unwrap(err).(minecraft.DisconnectError); ok {
+					_ = listener.Disconnect(conn, disconnect.Error())
+				}
 				return
 			}
 		}
 	}()
-
 	go func() {
-	defer serverConn.Close()
-	defer listener.Disconnect(conn, "connection lost")
+		defer serverConn.Close()
+		defer listener.Disconnect(conn, "connection lost")
+		for {
+			pk, err := serverConn.ReadPacket()
+			if pk, ok := pk.(*packet.Transfer); ok {
+				addr = fmt.Sprintf("%s:%d", pk.Address, pk.Port)
 
-	for {
-		pk, err := serverConn.ReadPacket()
-
-		if pk, ok := pk.(*packet.Transfer); ok {
-			addr = fmt.Sprintf("%s:%d", pk.Address, pk.Port)
-
-			pk.Address = "127.0.0.1"
-			pk.Port = 19132
-		}
-
-		if err != nil {
-			// En lugar de desempaquetar errores, simplemente verifica si err es un tipo de DisconnectError
-			var disconnect minecraft.DisconnectError
-			if errors.As(err, &disconnect) {
-				_ = listener.Disconnect(conn, disconnect.Error())
-			} else {
-				listener.Disconnect(conn, fmt.Sprintf("error: %v", err))
+				pk.Address = "127.0.0.1"
+				pk.Port = 19132
 			}
-			return
+			if err != nil {
+				if disconnect, ok := errors.Unwrap(err).(minecraft.DisconnectError); ok {
+					_ = listener.Disconnect(conn, disconnect.Error())
+				}
+				return
+			}
+			if err := conn.WritePacket(pk); err != nil {
+				return
+			}
 		}
-
-		if err := conn.WritePacket(pk); err != nil {
-			return
-		}
-	}
-}()
-
-
+	}()
+}
 
 type config struct {
 	Connection struct {
@@ -212,16 +202,6 @@ func readConfig() config {
 		log.Fatalf("error writing config file: %v", err)
 	}
 	return c
-}
-
-func saveConfig(c config) {
-	data, err := toml.Marshal(c)
-	if err != nil {
-		log.Fatalf("error encoding config: %v", err)
-	}
-	if err := os.WriteFile("config.toml", data, 0644); err != nil {
-		log.Fatalf("error writing config file: %v", err)
-	}
 }
 
 func tokenSource() oauth2.TokenSource {

@@ -9,7 +9,7 @@ import (
     "os"
     "sync"
     "time"
-    "errors"
+    "errors" // Importar el paquete "errors"
 
     "github.com/pelletier/go-toml"
     "github.com/sandertv/gophertunnel/minecraft"

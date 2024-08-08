@@ -144,21 +144,21 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 	go func() {
 	defer serverConn.Close()
 	defer listener.Disconnect(conn, "connection lost")
+
 	for {
 		pk, err := serverConn.ReadPacket()
 
-		// Verifica si el paquete es un paquete de transferencia
 		if pk, ok := pk.(*packet.Transfer); ok {
 			addr = fmt.Sprintf("%s:%d", pk.Address, pk.Port)
 
-			// Modifica la dirección y el puerto según sea necesario
 			pk.Address = "127.0.0.1"
 			pk.Port = 19132
 		}
 
-		// Maneja el error y verifica si es un error de desconexión
 		if err != nil {
-			if disconnect, ok := errors.Unwrap(err).(minecraft.DisconnectError); ok {
+			// En lugar de desempaquetar errores, simplemente verifica si err es un tipo de DisconnectError
+			var disconnect minecraft.DisconnectError
+			if errors.As(err, &disconnect) {
 				_ = listener.Disconnect(conn, disconnect.Error())
 			} else {
 				listener.Disconnect(conn, fmt.Sprintf("error: %v", err))
@@ -166,12 +166,12 @@ func handleConn(conn *minecraft.Conn, listener *minecraft.Listener, config confi
 			return
 		}
 
-		// Escribe el paquete al cliente
 		if err := conn.WritePacket(pk); err != nil {
 			return
 		}
 	}
 }()
+
 
 
 type config struct {

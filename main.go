@@ -10,6 +10,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"errors" 
 
 	"github.com/pelletier/go-toml"
 	"github.com/sandertv/gophertunnel/minecraft"
